@@ -1,0 +1,171 @@
+<!DOCTYPE HTML> 
+<html lang="en"> 
+<head>
+<title>MP3: Simulating Flight</title>
+<meta charset="utf-8"> 
+</head>
+
+<!-- If you add additional .js files, be sure to add them here. -->
+<script src="gl-matrix-min.js"></script>
+<script src="Terrain.js"></script>
+<script src="MP3.js"></script>
+
+<!-- MP2: Modify the shaders to implement Phong shading instead of Gourand! -->
+<script id="shader-vs" type="x-shader/x-vertex">#version 300 es
+// Vertex Shader
+// Implements Gourand shading. See the lecture on "Basic Shading" for details.
+
+// Use high-precision floats if available on this device.
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+in vec3 vertexPosition;
+in vec3 vertexNormal;
+
+uniform mat3 normalMatrix;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform float maxElevation;
+uniform float minElevation;
+uniform vec3 kDiffuse;
+
+out vec3 vertexColor;
+out vec3 vPosition;
+out vec3 vNormal;
+
+void main(void) {
+    
+    float height = (vertexPosition[2] - minElevation) / (maxElevation - minElevation);
+    if (height < 0.25) {
+        vertexColor = vec3(39.0/255.0, 71.0/255.0, 190.0/255.0); // blue
+    } else if (height < 0.50) {
+        vertexColor = vec3(50.0/255.0, 92.0/255.0, 49.0/255.0); // green
+    } else if (height < 0.75) {
+        vertexColor = vec3(83.0/255.0, 35.0/255.0, 28.0/255.0); // brown
+    } else {
+        vertexColor = vec3(200.0/255.0, 200.0/255.0, 200.0/255.0); // white
+    } 
+
+    gl_Position =
+        projectionMatrix * modelViewMatrix * vec4(vertexPosition, 1.0);
+
+    vPosition = (modelViewMatrix * vec4(vertexPosition, 1.0)).xyz;
+    vNormal = normalMatrix * vertexNormal;
+    
+}
+</script>
+
+<!-- MP2: Modify the shaders to implement Phong shading instead of Gourand! -->
+<script id="shader-fs" type="x-shader/x-fragment">#version 300 es
+// Fragment Shader
+// Implements Gourand shading. See the lecture on "Basic Shading" for details.
+
+// Use high-precision floats if available on this device.
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+in vec3 vertexColor;
+in vec3 vPosition;
+in vec3 vNormal;
+
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform mat3 normalMatrix;
+
+uniform vec3 kAmbient;
+uniform vec3 kDiffuse;
+uniform vec3 kSpecular;
+uniform float shininess;
+
+uniform vec3 lightPosition;
+uniform vec3 ambientLightColor;
+uniform vec3 diffuseLightColor;
+uniform vec3 specularLightColor;
+
+uniform bool fog;
+
+out vec4 fragmentColor;
+
+
+void main(void) {
+    #define LOG2 1.442695
+    vec4 fogColor = vec4(1.0, 1.0, 1.0, 1.0);
+    float fogDistance = length(vPosition);
+    float fogDensity = 0.35;
+
+    float fogAmount = 1. - exp2(-fogDensity *fogDensity * fogDistance * fogDistance * LOG2);
+    if (fog) {
+        fogAmount = clamp(fogAmount, 0.0, 1.0);
+    } else {
+        fogAmount = 0.0;
+    }
+    
+
+
+    // Interpolate the computed vertex color for each fragment.
+
+    //n
+    vec3 vertexNormal = normalize(vNormal);
+    vec3 vertexPosition = vPosition;
+
+    vec3 cameraPositionView = vec3(0.0, 0.0, 0.0);
+
+    // Calculate the three other vectors we need: l, r, and v
+    
+    vec3 lightVector = normalize(lightPosition - vertexPosition);
+    vec3 viewVector = normalize(cameraPositionView - normalize(vPosition));
+    vec3 reflectionVector = normalize(reflect(-lightVector, vertexNormal));
+
+    // Calculate diffuse light weighting: (n dot l)
+    float diffuseWeight = max(dot(vertexNormal, lightVector), 0.0);
+    
+    // Calculate the specular light weighting: (r dot v)^(shininess)
+    float rDotV = max(dot(reflectionVector, viewVector), 0.0);
+    float specularWeight = pow(rDotV, shininess);
+
+    // Sum up all three lighting components into the color for the vertex,
+    // and send it to the fragment shader.
+    fragmentColor = vec4((  kAmbient * ambientLightColor
+                        + vertexColor * diffuseLightColor * diffuseWeight
+                        + kSpecular * specularLightColor * specularWeight), 1.0);    
+    fragmentColor = mix(fragmentColor, fogColor, fogAmount);
+}
+</script>
+
+
+<body onload="startup();">
+    <canvas id="glCanvas" width="1200" height="600"></canvas>
+
+    <form id="input_form">
+        <fieldset>
+            <legend>Rendering Options</legend>
+            <div>
+                <input type="radio" name="primitive" id="wireframe" value="wireframe"> Wireframe
+                <input type="radio" name="primitive" id="polygon" value="polygon" checked> Polygon
+                <input type="radio" name="primitive" id="wirepoly" value="wirepoly" > Polygon with Edges
+            </div>
+
+            <div>
+                <input type="checkbox" id="fog" name="fog" checked>
+                <label for="fog">Enable Fog</label>
+            </div>
+
+            <div>
+                <p>Controls' Intructions: <br>
+                    Pressing the left (right) arrow key will make the plane roll to its left (right)<br>
+                    Pressing the up (down) arrow key will cause the airplane to pitch up (down)<br>
+                    Pressing the + (-) key will increase (decrease) the airplane's speed<br>
+                    Pressing the ESC key will reset the current view to the initial viewpoint and direction<br>
+                </p>
+            </div>
+        </fieldset>
+    </form>
+</body>
+
+</html>
